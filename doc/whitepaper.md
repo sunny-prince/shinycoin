@@ -1,3 +1,5 @@
+====================================================================================
+
 Proof-of-work
 =============================
 
@@ -7,35 +9,35 @@ Ramhog
 -----
 The algorithm is based on scrypt.  The issue with scrypt is that it does not use enough RAM.  Since a GPU is a massive parallel processor GPUs can leverage their parallelism to run many instances of scrypt simultaneously, and so scrypt is much more cost efficiently solved by a GPU.
 
-Ramhog solves this by requiring much larger amounts of RAM - 1.6 gigabytes (as opposed to 128 kb as required by scrypt) with the parameters that ShinyCoin uses - yet still being fast enough to compute feasibly.  How? Instead of using xorsalsa to sequentially generate values, ramhog uses xorshift4096* ( http://xorshift.di.unimi.it/ ).  Xorshift PRNGs are among the fastest high-quality PRNGs known to exist, and all that is needed is an algorithm which generates a sequence of numbers which each depend on the previous numbers in the sequence, not necessarily an algorithm with good cryptographic hashing properties which is what xorsalsa was designed for.
+Ramhog solves this by requiring much larger amounts of RAM - 15 gigabytes (as opposed to 128 kb as required by scrypt) with the parameters that ShinyCoin uses - yet still being fast enough to compute feasibly.  How? Instead of using xorsalsa to sequentially generate values, ramhog uses xorshift4096* ( http://xorshift.di.unimi.it/ ).  Xorshift PRNGs are among the fastest high-quality PRNGs known to exist, and all that is needed is an algorithm which generates a sequence of numbers which each depend on the previous numbers in the sequence, not necessarily an algorithm with good cryptographic hashing properties which is what xorsalsa was designed for.
 
 One weakness of scrypt is that one only needs one block of the scratchpad in order to generate the following blocks of the scratchpad.  A solving algorithm could save on RAM by only storing intermediate values of the pad and generating needed values on-the-fly.  This would be slower, but a GPU or an ASIC could potentially more than make up the difference by their speed and parallelism.  Ramhog improves on this by pseudorandomly XORing values in the scratchpad with values earlier generated in the scratchpad.  To generate the 10000th value, one might have to look up the 6000th value, and the 6000th value might further depend on the 1000th value.  This, combined this with the fact that ramhog’s scratchpad has millions of values and that the PRNG state’s size is 64 times larger than one element of the scratchpad, makes a cache-miss with the storing-intermediates strategy extremely costly - the further into the scratchpad the value, the costlier.
 
-Once the 1.6 gigabytes of scratchpad are generated, the final values are used to seed the xorshift PRNG again, which is then used to generate a sequence which randomly selects values from all over the scratchpad.  Since xorshift is so fast, this can be done a large number of times (1024*1024 times for ShinyCoin).  Such a high number of iterations leads to a high number of potentially extremely slow cache misses if sufficient RAM isn’t available to store all 1.6 gigabytes, which renders any variant of the algorithm that doesn’t store all values completely infeasible.  Thus any algorithm to generate ShinyCoin hashes will need access to 1.6 gigabytes of RAM.  
+Once the 15 gigabytes of scratchpad are generated, the final values are used to seed the xorshift PRNG again, which is then used to generate a sequence which randomly selects values from all over the scratchpad.  Since xorshift is so fast, this can be done a large number of times (1024*1024 times for ShinyCoin).  Such a high number of iterations leads to a high number of potentially extremely slow cache misses if sufficient RAM isn’t available to store all 15 gigabytes, which renders any variant of the algorithm that doesn’t store all values completely infeasible.  Thus any algorithm to generate ShinyCoin hashes will need access to 15 gigabytes of RAM.
 
-GPU- and ASCI-resistant
+The reason 15 gigabytes of RAM is selected rather than any other amount is to combat the effectiveness of botnets.  A typical general purpose computer generally does not have 15 gigabytes free, even if it does manage to be equipped with 16 gigabytes of RAM.  Generally, the operating system with basic software running in the background will render a 16 gigabytes machine incapable of running the algorithm, so a computer must be equipped with more than 16 gigabytes of RAM to be effectively botnetted, but a computer which is voluntarily mining only requires 16 gigabytes to mine.
+
+GPU and ASCI-resistant
 -----
-Since a large amount of RAM on an ASIC would make it too costly , an ASIC implementation is totally out of the question.  GPUs will work, but won’t fare much better than CPUs.  A top-of-the-line GPU with 6 GB of RAM can only efficiently run three simultaneous instances -  A cheaper CPU with sufficient RAM can do the same.  GPUs are slower than equivalently-priced CPUs at sequential operations, so running the same number of instances at a time, the CPUs will be more efficient.
-
-As ShinyCoin will eventually use proof-of-stake for security, the proof-of-work phase will only be relevant for the first year or so.  In that year, the hardware available to run proof-of-work mining will likely not change too drastically.  Once the majority of blocks are proof-of-stake it will not matter much if a ‘crack’ to ramhog gives GPUs a significant cost advantage over a CPU miner.  
+Since a large amount of RAM on an ASIC would make it too costly , an ASIC implementation would be way too costly, and so out of the question.  GPUs are not equipped with 15 gigabytes of RAM, so only a CPU for the moment would work.  As ShinyCoin will eventually use proof-of-stake for security, the proof-of-work phase will only be relevant for the first year or so.  In that year, the hardware available to run proof-of-work mining will likely not change too drastically.  Once the majority of blocks are proof-of-stake it will not matter much if a ‘crack’ to ramhog gives a different implementation other than a general purpose processor an advantage.
 
 Distribution
 -----
 The proof-of-work reward is defined by the following smooth exponentially-decaying function:
 
-    200 / (block_height/52560)^2
+    400 / (block_height/52560)^2
 
-The reward is capped at 200, so blocks before the 52560th block do not have exorbitant rewards.  A major problem with many new coins, including peercoin is that block rewards are astronomically larger in the beginning.  As coins are intent on being distributed fairly,  
+The reward is capped at 400, so blocks before the 26280th block do not have exorbitant rewards.  A major problem with many new coins, including peercoin is that block rewards are astronomically larger in the beginning.  As coins are intent on being distributed fairly,  
 
 The effect is to divide the reward by the square of the number of quarter-year periods so that the proof-of-work reward quickly grows insignificant.  If only proof-of-work blocks are generated:
 
        Period  |  Factor  |  Block Reward
      ----------+----------+----------------
-     1/4 year  |  1       |  200.000000
-     1/2 year  |  4       |   50.000000
-     1 year    |  16      |   12.500000
-     2 years   |  64      |    3.125000
-     4 years   |  256     |    0.781250
+     1/4 year  |  1       |  400.000000
+     1/2 year  |  4       |  100.000000
+     1 year    |  16      |   6.2500000
+     2 years   |  64      |    1.562500
+     4 years   |  256     |    0.390625
 
 Inflation after the first year is very little, especially compared with other crypto-currencies:
 
@@ -56,7 +58,9 @@ After this period, the goal is to transition to securing the network only by pro
 
 In implementing the proof-of-stake sha256 algorithm, Satoshi solved two problems that were difficult to solve.  First was a fair, wide distribution of coin.  Had the coins been “pre mined” (or at the time that word didn’t yet exist), and sold the coins there would be little chance the distribution of coin would be so widespread.  When a pre mined NXT was offered fairly to the world — anyone contributing will get their appropriate share of NXT — only 70 wallets managed to donate, and this for a total equivalent cost of a few thousand Euro — for 100% of NXT.  It is safe to say that at Bitcoin’s launch if the distribution depended on people reaching into their pockets, there would be very few people who would be willing to spend a very small amount of money collectively.  
 
-ShinyCoin has the fairest possible distribution scheme.  Anybody can use their own computer and do proof-of-work for the initial distribution phase without being overtaken by centralized GPU and ASIC mining operations, after which anybody who holds ShinyCoins will get interest on their coins for helping to secure the network.  This was after all the clear intent of Satoshi Nakomoto with the implementation of the sha256 proof-of-work algorithm — fair distribution of coin to those willing to dedicate their computing power.  I doubt the author of a revolutionary decentralized ecash system wanted expensive specialized hardware in the hands of a few contributing no value and who’s result is to inflate the bitcoin supply and dilute the value for all other bitcoin holders.  
+ShinyCoin has the fairest possible distribution scheme.  Anybody can use their own computer and do proof-of-work for the initial distribution phase without being overtaken by centralized GPU and ASIC mining operations, after which anybody who holds ShinyCoins will get interest on their coins for helping to secure the network.  This was after all the clear intent of Satoshi Nakomoto with the implementation of the sha256 proof-of-work algorithm — fair distribution of coin to those willing to dedicate their computing power.  I doubt the author of a revolutionary decentralized ecash system wanted expensive specialized hardware in the hands of a few contributing no value and who’s result is to inflate the bitcoin supply and dilute the value for all other bitcoin holders.
+
+For fairness the first 48 hours of mining will have reduced rewards.  The rewards will scale up quadratically up to 400 Shiny.  This is to give ample time for everyone to point their mining power, rather than give exorbitant rewards to miners of the first few blocks.  I have also changed the difficulty adjustment algorithm to a variation of Dark Gravity Wave which I call Shiny Gravity Wave.  PeerCoin’s difficult adjustment algorithm is too slow to adapt to changing hashing power and can result in distributing way too many coins much earlier than is scheduled.
 
 Security
 ----
