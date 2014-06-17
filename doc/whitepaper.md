@@ -25,7 +25,7 @@ Distribution
 -----
 The proof-of-work reward is defined by the following smooth exponentially-decaying function:
 
-    400 / (block_height/52560)^2
+    400 / (block_height/26280)^2
 
 The reward is capped at 400, so blocks before the 26280th block do not have exorbitant rewards.  A major problem with many new coins, including peercoin is that block rewards are astronomically larger in the beginning.  As coins are intent on being distributed fairly,  
 
