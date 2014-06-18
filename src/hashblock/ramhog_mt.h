@@ -35,4 +35,6 @@ public:
                 bool fForMiner);
 };
 
+void SetNeedCheckBlock(bool fNew);
+
 #endif

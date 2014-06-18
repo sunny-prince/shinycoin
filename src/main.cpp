@@ -2292,7 +2292,10 @@ bool ProcessBlock(CNode* pfrom, CBlock* pblock)
     if (!IsInitialBlockDownload())
         Checkpoints::AskForPendingSyncCheckpoint(pfrom);
 
-    if (!pblock->CheckBlock(true))
+    SetNeedCheckBlock(true);
+    bool fBlockOk = pblock->CheckBlock(true);
+    SetNeedCheckBlock(false);
+    if (!fBlockOk)
         return error("ProcessBlock() : CheckBlock FAILED");
     
     // If don't already have its previous block, shunt it off to holding area until we get it

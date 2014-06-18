@@ -119,9 +119,28 @@ static void ramhog_mt(ramhog_mt_args &args)
     args.done.set_value(true);
 }
 
+static bool fNeedCheckBlock = false;
+static CCriticalSection cs_needCheckBlock;
+
+void SetNeedCheckBlock(bool fNew)
+{
+    LOCK(cs_needCheckBlock);
+
+    if (fDebug)
+        printf("SetNeedCheckBlock(%s)\n", fNew ? "true" : "false");
+
+    fNeedCheckBlock = fNew;
+}
+
 bool CRamhogThreadPool::ramhog(const uint8_t *input, size_t input_size, uint8_t *output, size_t output_size,
                                bool fForMiner)
 {
+    {
+        LOCK(cs_needCheckBlock);
+        if (fNeedCheckBlock && fForMiner)
+            return false;
+    }
+
     CBlockIndex *pindexForBest = pindexBest;
 
     waitPads.wait();
