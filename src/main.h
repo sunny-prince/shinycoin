@@ -130,7 +130,7 @@ bool CheckWork(CBlock* pblock, CWallet& wallet, CReserveKey& reservekey, uint256
 bool CheckProofOfWork(uint256 hash, unsigned int nBits);
 int64 GetNextProofOfWorkReward(const CBlockIndex *pPrev, bool fAccountForPoS);
 int64 GetProofOfStakeReward(int64 nCoinAgeSeconds);
-unsigned int ComputeMinWork(unsigned int nBase, int64 nTime);
+unsigned int ComputeMinWork(const CBlockIndex *plastBlockIndex, int64 nTime);
 int GetNumBlocksOfPeers();
 bool IsInitialBlockDownload();
 uint256 WantedByOrphan(const CBlock* pblockOrphan);

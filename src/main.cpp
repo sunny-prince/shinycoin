@@ -45,7 +45,18 @@ unsigned int nGenesisNonce = 0;
 uint256 hashGenesisBlock;
 uint256 hashGenesisMerkle;
 
-static CBigNum bnProofOfWorkLimit(~uint256(0) >> 17);
+static CBigNum bnOldProofOfWorkLimit(~uint256(0) >> 17);
+static CBigNum bnNewProofOfWorkLimit(~uint256(0) >> 10);
+static int nPoWSwitchHeight = 8;
+
+static CBigNum GetProofOfWorkLimit(int nHeight)
+{
+    if (nHeight < nPoWSwitchHeight)
+        return bnOldProofOfWorkLimit;
+    else
+        return bnNewProofOfWorkLimit;
+}
+
 static CBigNum bnInitialPoSTarget(~uint256(0) >> 36);
 static CBigNum bnTestProofOfWorkLimit(~uint256(0) >> 5);
 static CBigNum bnTestInitialPoSTarget(~uint256(0) >> 14);
@@ -974,8 +985,11 @@ static const int64 nTargetSpacingWorkMax = 60 * STAKE_TARGET_SPACING; // 2-hour
 // minimum amount of work that could possibly be required nTime after
 // minimum work required was nBase
 //
-unsigned int ComputeMinWork(unsigned int nBase, int64 nTime)
+unsigned int ComputeMinWork(const CBlockIndex *plastBlockIndex, int64 nTime)
 {
+    int nBase = plastBlockIndex->nBits;
+    CBigNum bnProofOfWorkLimit = bnNewProofOfWorkLimit;
+    
     CBigNum bnResult;
     bnResult.SetCompact(nBase);
     bnResult *= 2;
@@ -1021,11 +1035,33 @@ unsigned int static GetNextTargetRequired(const CBlockIndex *pBlockLastSolved, b
     static int64 nPastBlocksMin = 2;
     static int64 nPastBlocksMax = 24;
     
+    static int lastPrintStake = 0, lastPrintWork = 0;
+    bool fPrint = (fProofOfStake ? lastPrintStake : lastPrintWork) < pBlockLastSolved->nHeight;
+    (fProofOfStake ? lastPrintStake : lastPrintWork) = pBlockLastSolved->nHeight;
+
+    if (fPrint)
+    {
+        printf("GetNextTargetRequired(%s):\n", fProofOfStake ? "stake" : "work");
+        printf("    nHeight=%d\n", pBlockLastSolved->nHeight);
+    }
+    
+    if (pBlockLastSolved->nHeight >= nPoWSwitchHeight && pBlockLastSolved->nHeight < nPoWSwitchHeight + 8)
+    {
+        CBigNum bnNewTarget = bnNewProofOfWorkLimit;
+        if (fPrint)
+            printf("    bnNewTarget=0x%s (limit switch)\n", bnNewTarget.GetHex(64).c_str());
+        return bnNewTarget.GetCompact();
+    }
+    
     const CBlockIndex *pBlockReading = GetLastBlockIndex2(pBlockLastSolved, fProofOfStake);
+    CBigNum bnProofOfWorkLimit = GetProofOfWorkLimit(pBlockLastSolved->nHeight);
     
     if (pBlockReading == NULL || GetTypeHeight(pBlockReading, fProofOfStake) - 1 < nPastBlocksMin)
     {
-        return (fProofOfStake ? bnInitialPoSTarget : bnProofOfWorkLimit).GetCompact();
+        CBigNum bnNewTarget = fProofOfStake ? bnInitialPoSTarget : bnProofOfWorkLimit;
+        if (fPrint)
+            printf("    bnNewTarget=0x%s (< min past blocks)\n", bnNewTarget.GetHex(64).c_str());
+        return bnNewTarget.GetCompact();
     }
     
     int64 nCountBlocks = 0;
@@ -1052,12 +1088,6 @@ unsigned int static GetNextTargetRequired(const CBlockIndex *pBlockLastSolved, b
         pBlockReading = GetLastBlockIndex2(pBlockReading->pprev, fProofOfStake);
         nCountBlocks++;
     }
-    
-    static int lastPrintStake = 0, lastPrintWork = 0;
-    bool fPrint = (fProofOfStake ? lastPrintStake : lastPrintWork) < pBlockLastSolved->nHeight;
-    
-    if (fPrint)
-        printf("GetNextTargetRequired(%s):\n", fProofOfStake ? "stake" : "work");
     
     int64 nTargetTimespan;
     if (fProofOfStake)
@@ -1097,8 +1127,6 @@ unsigned int static GetNextTargetRequired(const CBlockIndex *pBlockLastSolved, b
     {
         printf("    nActualTimespan (adj)=%"PRI64d"\n", nActualTimespan);
         printf("    bnNewTarget=0x%s\n", bnNewTarget.GetHex(64).c_str());
-        
-        (fProofOfStake ? lastPrintStake : lastPrintWork) = pBlockLastSolved->nHeight;
     }
     
     return bnNewTarget.GetCompact();
@@ -1110,7 +1138,7 @@ bool CheckProofOfWork(uint256 hash, unsigned int nBits)
     bnTarget.SetCompact(nBits);
 
     // Check range
-    if (bnTarget <= 0 || bnTarget > bnProofOfWorkLimit)
+    if (bnTarget <= 0 || bnTarget > bnNewProofOfWorkLimit)
         return error("CheckProofOfWork() : nBits below minimum work");
 
     // Check proof of work matches claimed amount
@@ -2270,7 +2298,7 @@ bool ProcessBlock(CNode* pfrom, CBlock* pblock)
             mapProofOfStake.insert(make_pair(hash, hashProofOfStake));
     }
 
-    CBlockIndex* pcheckpoint = Checkpoints::GetLastSyncCheckpoint();
+    /*CBlockIndex* pcheckpoint = Checkpoints::GetLastSyncCheckpoint();
     if (pcheckpoint && pblock->hashPrevBlock != hashBestChain && !Checkpoints::WantedByPendingSyncCheckpoint(hash))
     {
         // Extra checks to prevent "fill up memory by spamming with bogus blocks"
@@ -2278,7 +2306,8 @@ bool ProcessBlock(CNode* pfrom, CBlock* pblock)
         CBigNum bnNewBlock;
         bnNewBlock.SetCompact(pblock->nBits);
         CBigNum bnRequired;
-        bnRequired.SetCompact(ComputeMinWork(GetLastBlockIndex(pcheckpoint, pblock->IsProofOfStake())->nBits, deltaTime));
+        const CBlockIndex *plastBlockIndex = GetLastBlockIndex(pcheckpoint, pblock->IsProofOfStake());
+        bnRequired.SetCompact(ComputeMinWork(plastBlockIndex, deltaTime));
 
         if (bnNewBlock > bnRequired)
         {
@@ -2286,7 +2315,7 @@ bool ProcessBlock(CNode* pfrom, CBlock* pblock)
                 pfrom->Misbehaving(100);
             return error("ProcessBlock() : block with too little %s", pblock->IsProofOfStake()? "proof-of-stake" : "proof-of-work");
         }
-    }
+    }*/
 
     // ppcoin: ask for pending sync-checkpoint if any
     if (!IsInitialBlockDownload())
@@ -2516,7 +2545,8 @@ bool LoadBlockIndex(bool fAllowNew)
     
     if (fTestNet)
     {
-        bnProofOfWorkLimit = bnTestProofOfWorkLimit;
+        bnNewProofOfWorkLimit = bnTestProofOfWorkLimit;
+        bnOldProofOfWorkLimit = bnTestProofOfWorkLimit;
         bnInitialPoSTarget = bnTestInitialPoSTarget;
         nStakeMinAge = STAKE_MIN_AGE_TEST;
         nCoinbaseMaturity = COINBASE_MATURITY_TEST;
@@ -2538,7 +2568,7 @@ bool LoadBlockIndex(bool fAllowNew)
                                         GetArg("-ramhogthreads", 1), GetArg("-ramhogworkers", nProcessors));
     
     printf("%s Network: genesis=0x%s nBitsLimit=0x%08x nStakeMinAge=%d nCoinbaseMaturity=%d nModifierInterval=%d\n",
-           fTestNet ? "ShinyCoinTest" : "ShinyCoin", hashGenesisBlock.ToString().substr(0, 20).c_str(), bnProofOfWorkLimit.GetCompact(),nStakeMinAge, nCoinbaseMaturity, nModifierInterval);
+           fTestNet ? "ShinyCoinTest" : "ShinyCoin", hashGenesisBlock.ToString().substr(0, 20).c_str(), bnNewProofOfWorkLimit.GetCompact(),nStakeMinAge, nCoinbaseMaturity, nModifierInterval);
 
     //
     // Load block index
@@ -2571,7 +2601,7 @@ bool LoadBlockIndex(bool fAllowNew)
         block.hashPrevBlock = 0;
         block.hashMerkleRoot = block.BuildMerkleTree();
         block.nVersion = 1;
-        block.nBits    = bnProofOfWorkLimit.GetCompact();
+        block.nBits    = GetProofOfWorkLimit(0).GetCompact();
 
         block.nTime = txNew.nTime;
         block.nNonce = nGenesisNonce;
