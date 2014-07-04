@@ -33,7 +33,7 @@ namespace Checkpoints
     void InitMapCheckpoints()
     {
         mapCheckpoints = boost::assign::map_list_of
-            ( 0, hashGenesisBlock ),
+            ( 0, hashGenesisBlock )
             ( 4024, uint256("0xa33be4c6d63d2459ea587a110e21013fef619bfd3cebae1a51839496ab46c883"))
             ;
     }
