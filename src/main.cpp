@@ -13,6 +13,7 @@
 #include "kernel.h"
 #include "txinfo.h"
 #include "alert.h"
+#include "signedhash.h"
 #include "hashblock/ramhog_mt.h"
 #include <boost/algorithm/string/replace.hpp>
 #include <boost/filesystem.hpp>
@@ -875,20 +876,23 @@ int CTxIndex::GetDepthInMainChain() const
 // CBlock and CBlockIndex
 //
 
-uint256 CBlock::GetPoWHash() const
+bool CBlock::GetPoWHash(uint256& powHash) const
 {
-    uint256 outHash;
+    uint256 idHash = GetIDHash();
+    
+    if (SignedHash::GetPoWHash(idHash, powHash))
+        return true;
     
     const char *pbegin = BEGIN(nVersion), *pend = END(nNonce);
     
-    bool fSuccess = pramhogPool->ramhog((const uint8_t *)pbegin, (pend - pbegin),
-                                        (uint8_t *)&outHash, sizeof(outHash),
-                                        false);
+    if (!pramhogPool->ramhog((const uint8_t *)pbegin, (pend - pbegin),
+                             (uint8_t *)&powHash, sizeof(powHash),
+                             false))
+        return false;
     
-    if (!fSuccess)
-        throw new std::runtime_error("ramhog failed");
+    SignedHash::UncheckedAddHash(idHash, powHash);
     
-    return outHash;
+    return true;
 }
 
 bool CBlock::MinerGetPoWHash(uint256 &outHash) const
@@ -2199,8 +2203,16 @@ bool CBlock::CheckBlock(bool fCheckPoWHash) const
         return DoS(100, error("CheckBlock() : bad block signature"));
 
     // check proof of work matches claimed amount
-    if (IsProofOfWork() && fCheckPoWHash && !CheckProofOfWork(GetPoWHash(), nBits))
-        return DoS(500, error("CheckBlock() : proof of work failed"));
+    if (IsProofOfWork() && fCheckPoWHash)
+    {
+        uint256 powHash;
+        
+        if (!GetPoWHash(powHash))
+            return error("CheckBlock() : could not get proof of work hash");
+        
+        if (!CheckProofOfWork(powHash, nBits))
+            return DoS(500, error("CheckBlock() : proof of work failed"));
+    }
 
     return true;
 }
@@ -2387,6 +2399,9 @@ bool ProcessBlock(CNode* pfrom, CBlock* pblock)
     if (pfrom && !CSyncCheckpoint::strMasterPrivKey.empty())
         Checkpoints::SendSyncCheckpoint(Checkpoints::AutoSelectSyncCheckpoint());
     
+    if (!CSignedHash::strMasterPrivKey.empty())
+        SignedHash::SendSignedHash(pblock->GetIDHash());
+    
     AddressBookRepaint();
 
     return true;
@@ -2531,16 +2546,22 @@ bool LoadBlockIndex(bool fAllowNew)
 {
     if (!hashGenesisBlock)
     {
-        if (GetArg("-genesisHash", "").empty())
+        if (fTestNet)
         {
-            return error("Must to provide -genesisHash, -genesisMerkle, -genesisNonce, -genesisTimestamp, and -genesisTimestampString");
+            hashGenesisBlock = uint256("0xc3a7b513450b23727d896b315694ad26c8b900275b28aa908c5d6792ef76dd06");
+            hashGenesisMerkle = uint256("0x24e5314f7b6269d9d93bc8b8162037dc254a69b9a5218f03cf681b4255c8ee95");
+            strGenesisTimestampString = "testnet";
+            nGenesisTime = 1403127000;
+            nGenesisNonce = 1;
         }
-        
-        hashGenesisBlock = uint256(GetArg("-genesisHash", ""));
-        hashGenesisMerkle = uint256(GetArg("-genesisMerkle", ""));
-        strGenesisTimestampString = GetArg("-genesisTimestampString", "");
-        nGenesisTime = GetArg("-genesisTimestamp", 0);
-        nGenesisNonce = GetArg("-genesisNonce", 0);
+        else
+        {
+            hashGenesisBlock = uint256("0x69af109a3d4f8be1192f4598bf27413ecde0618df306a8a13d416e3ac5c0b4f9");
+            hashGenesisMerkle = uint256("0x41aae881eacb1d04fd8dd23cdd9e61a80ec80c2f300ec465e44a233f97e6496b");
+            strGenesisTimestampString = "Times UK 19-JUN-2014 Felipe VI was proclaimed King of Spain this morning";
+            nGenesisTime = 1403189935;
+            nGenesisNonce = 1;
+        }
     }
     
     if (fTestNet)
@@ -2565,7 +2586,7 @@ bool LoadBlockIndex(bool fAllowNew)
         nProcessors = 1;
     
     pramhogPool = new CRamhogThreadPool(nShinyScratchpads, nShinyHashChunks, nShinyHashIterations,
-                                        GetArg("-ramhogthreads", 1), GetArg("-ramhogworkers", nProcessors));
+                                        GetArg("-ramhogthreads", 0), GetArg("-ramhogworkers", nProcessors));
     
     printf("%s Network: genesis=0x%s nBitsLimit=0x%08x nStakeMinAge=%d nCoinbaseMaturity=%d nModifierInterval=%d\n",
            fTestNet ? "ShinyCoinTest" : "ShinyCoin", hashGenesisBlock.ToString().substr(0, 20).c_str(), bnNewProofOfWorkLimit.GetCompact(),nStakeMinAge, nCoinbaseMaturity, nModifierInterval);
@@ -2578,6 +2599,8 @@ bool LoadBlockIndex(bool fAllowNew)
         return false;
     txdb.Close();
 
+    SignedHash::LoadHashCache();
+    
     //
     // Init with genesis block
     //
@@ -2786,12 +2809,29 @@ bool static AlreadyHave(CTxDB& txdb, const CInv& inv)
     case MSG_BLOCK:
         return mapBlockIndex.count(inv.hash) ||
                mapOrphanBlocks.count(inv.hash);
+    
+    case MSG_SIGNED_HASH:
+        return SignedHash::mapInvSignedHash.count(inv.hash);
     }
     // Don't know what it is, just say we already got one
     return true;
 }
 
 
+static void ProcessSignedHashInvRequest(CNode *pfrom, const uint256 &idHash)
+{
+    uint256 powHash;
+    std::vector<unsigned char> vchSig;
+    if (SignedHash::GetSignedPoWHash(idHash, powHash, vchSig))
+    {
+        CSignedHash signedHash;
+        signedHash.SetHashes(idHash, powHash);
+        if (signedHash.SetSignature(vchSig))
+            pfrom->PushInventory(CInv(MSG_SIGNED_HASH, signedHash.GetHash()));
+    }
+    else if (!CSignedHash::strMasterPrivKey.empty())
+        SignedHash::SendSignedHash(idHash);
+}
 
 
 bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
@@ -2918,7 +2958,22 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
             if (!Checkpoints::checkpointMessage.IsNull())
                 Checkpoints::checkpointMessage.RelayTo(pfrom);
         }
-
+        
+        if (pfrom->nVersion >= PROTOCOL_VERSION_SIGNEDHASH_START && CSignedHash::strMasterPrivKey.empty())
+        {
+            for (CBlockIndex *pindex=pindexGenesisBlock->pnext; pindex; pindex = pindex->pnext)
+            {
+                uint256 idHash = pindex->GetBlockIDHash();
+                uint256 powHash;
+                std::vector<unsigned char> vchSig;
+                if (!SignedHash::GetSignedPoWHash(idHash, powHash, vchSig))
+                {
+                    pfrom->PushMessage("getsigpowhas", idHash);
+                    break;
+                }
+            }
+        }
+        
         pfrom->fSuccessfullyConnected = true;
 
         printf("version message: version %d, blocks=%d\n", pfrom->nVersion, pfrom->nStartingHeight);
@@ -3101,6 +3156,12 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
                     }
                 }
             }
+            else if (inv.type == MSG_SIGNED_HASH)
+            {
+                std::map<uint256, CSignedHash>::iterator it = SignedHash::mapInvSignedHash.find(inv.hash);
+                if (it != SignedHash::mapInvSignedHash.end())
+                    pfrom->PushMessage("sigpowhash", (*it).second);
+            }
             else if (inv.IsKnownType())
             {
                 // Send stream from relay memory
@@ -3144,7 +3205,11 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
                     pfrom->PushInventory(CInv(MSG_BLOCK, hashBestChain));
                 break;
             }
-            pfrom->PushInventory(CInv(MSG_BLOCK, pindex->GetBlockIDHash()));
+            
+            uint256 idHash = pindex->GetBlockIDHash();
+            ProcessSignedHashInvRequest(pfrom, idHash);
+            pfrom->PushInventory(CInv(MSG_BLOCK, idHash));
+            
             CBlock block;
             block.ReadFromDisk(pindex, true);
             nBytes += block.GetSerializeSize(SER_NETWORK, PROTOCOL_VERSION);
@@ -3269,16 +3334,31 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
     {
         CBlock block;
         vRecv >> block;
-
-        printf("received block %s\n", block.GetIDHash().ToString().substr(0,20).c_str());
-        // block.print();
-
+        
+        uint256 idHash = block.GetIDHash();
+        uint256 powHash;
+        
         CInv inv(MSG_BLOCK, block.GetIDHash());
         pfrom->AddInventoryKnown(inv);
-
-        if (ProcessBlock(pfrom, &block))
+        
+        if (GetArg("-ramhogthreads", 0) == 0 && !SignedHash::GetPoWHash(idHash, powHash))
+        {
+            printf("received block %s but no hash\n", block.GetIDHash().ToString().substr(0,20).c_str());
             mapAlreadyAskedFor.erase(inv);
-        if (block.nDoS) pfrom->Misbehaving(block.nDoS);
+            pfrom->PushMessage("getsigpowhas", idHash);
+        }
+        else
+        {
+            printf("received block %s\n", block.GetIDHash().ToString().substr(0,20).c_str());
+            // block.print();
+            
+            if (ProcessBlock(pfrom, &block))
+                mapAlreadyAskedFor.erase(inv);
+            
+            if (block.nDoS)
+                pfrom->Misbehaving(block.nDoS);
+        }
+
     }
 
 
@@ -3389,6 +3469,46 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
             LOCK(cs_vNodes);
             BOOST_FOREACH(CNode* pnode, vNodes)
                 checkpoint.RelayTo(pnode);
+        }
+    }
+    
+    else if (strCommand == "getsigpowhas")
+    {
+        uint256 startHash;
+        vRecv >> startHash;
+        
+        CBlockIndex *pindex = NULL;
+        
+        map<uint256, CBlockIndex *>::iterator it = mapBlockIndex.find(startHash);
+        if (it != mapBlockIndex.end())
+            pindex = (*it).second;
+        else
+            printf("getsignedhashes invalid block hash\n");
+        
+        for (; pindex; pindex = pindex->pnext)
+            ProcessSignedHashInvRequest(pfrom, pindex->GetBlockIDHash());
+    }
+    
+    else if (strCommand == "sigpowhash")
+    {
+        CSignedHash signedHash;
+        vRecv >> signedHash;
+
+        CInv inv(MSG_SIGNED_HASH, signedHash.GetHash());
+        pfrom->AddInventoryKnown(inv);
+        
+        if (!signedHash.ProcessRelaySignedHash(pfrom))
+            error("invalid signed hash for %s\n", signedHash.idHash.ToString().substr(0,20).c_str());
+        else
+        {
+            printf("received signed hash for %s\n", signedHash.idHash.ToString().substr(0,20).c_str());
+            
+            if (mapBlockIndex.find(signedHash.idHash) == mapBlockIndex.end())
+            {
+                CInv inv(MSG_BLOCK, signedHash.idHash);
+                mapAlreadyAskedFor.erase(inv);
+                pfrom->AskFor(inv);
+            }
         }
     }
 
@@ -4072,7 +4192,8 @@ bool CheckWork(CBlock* pblock, CWallet& wallet, CReserveKey& reservekey, uint256
         }
         else
         {
-            hash = pblock->GetPoWHash();
+            if (!pblock->GetPoWHash(hash))
+                return error("BitcoinMiner : could not get proof-of-work hash");
         }
 
         if (hash > hashTarget)
@@ -4190,7 +4311,7 @@ void BitcoinMiner(CWallet *pwallet, bool fProofOfStake)
         {
             if (!pblock->MinerGetPoWHash(hash))
                 break;
-
+            
             if (pindexPrev != pindexBest)
                 break;
             

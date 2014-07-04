@@ -13,6 +13,7 @@
 #include "ui_interface.h"
 #include "checkpoints.h"
 #include "hashblock/hashblock.h"
+#include "signedhash.h"
 #include <boost/filesystem.hpp>
 #include <boost/filesystem/fstream.hpp>
 #include <boost/filesystem/convenience.hpp>
@@ -190,10 +191,12 @@ bool AppInit2(int argc, char* argv[])
           _("Options:") + "\n" +
             "  -conf=<file>     \t\t  " + _("Specify configuration file (default: shinycoin.conf)") + "\n" +
             "  -pid=<file>      \t\t  " + _("Specify pid file (default: shinycoind.pid)") + "\n" +
-            "  -gen             \t\t  " + _("Generate coins (default: true)") + "\n" +
+            "  -gen             \t\t  " + _("Generate coins (default: false)") + "\n" +
             "  -gen=0           \t\t  " + _("Don't generate coins") + "\n" +
-            "  -ramhogthreads=<n>\t\t  " + _("Set the number of concurrent ramhog hashes to run.  You will need 15 GB for each thread (default: 1)") +
+            "  -ramhogthreads=<n>\t\t  " + _("Set the number of concurrent ramhog hashes to run.  You will need 15 GB for each thread (default: 0)") +
             "  -ramhogworkers=<n>\t\t  " + _("Set the number of worker threads to use for generating scratchpads (default: the number of processors)") +
+            "  -usesignedhashes\t\t"    + _("Use the signed proof-of-work hashes (default: true)") + "\n" +
+            "  -usesignedhashes=0\t\t"  + _("Don't use the signed proof-of-work hashes") + "\n" +
             "  -mint            \t\t  " + _("Mint coins (default: true)") + "\n" +
             "  -mint=0          \t\t  " + _("Don't mint coins") + "\n" +
             "  -reservebalance=<n>\t  " + _("Keep at least this many coins unstaked (default: 0)") + "\n" +
@@ -375,7 +378,7 @@ bool AppInit2(int argc, char* argv[])
 
     ptxinfoStore = new CTxInfoStore(GetDataDir(true) / "infostore.db3");
     
-    SoftSetArg("-genproclimit", GetArg("-ramhogthreads", "1"));
+    SoftSetArg("-genproclimit", GetArg("-ramhogthreads", "0"));
     
     InitMessage(_("Loading addresses..."));
     printf("Loading addresses...\n");
@@ -485,6 +488,9 @@ bool AppInit2(int argc, char* argv[])
     printf("setKeyPool.size() = %d\n",      pwalletMain->setKeyPool.size());
     printf("mapWallet.size() = %d\n",       pwalletMain->mapWallet.size());
     printf("mapAddressBook.size() = %d\n",  pwalletMain->mapAddressBook.size());
+    
+    if (GetArg("-ramhogthreads", 0) == 0 && !GetBoolArg("-usesignedhashes", true))
+        strErrors << _("Must either run ramhog or use the signed hashes") << "\n";
 
     if (!strErrors.str().empty())
     {
@@ -613,7 +619,13 @@ bool AppInit2(int argc, char* argv[])
         if (!Checkpoints::SetCheckpointPrivKey(GetArg("-checkpointkey", "")))
             ThreadSafeMessageBox(_("Unable to sign checkpoint, wrong checkpointkey?\n"), _("ShinyCoin"), wxOK | wxMODAL);
     }
-
+    
+    if (mapArgs.count("-signedhashkey"))
+    {
+        if (!SignedHash::SetSignedHashPrivKey(GetArg("-signedhashkey", "")))
+            ThreadSafeMessageBox(_("Unable to sign hash, wrong signedhashkey?\n"), _("ShinyCoin"), wxOK | wxMODAL);
+    }
+    
     //
     // Start the node
     //

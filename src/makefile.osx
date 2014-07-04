@@ -110,7 +110,8 @@ OBJS= \
     obj/hashblock-ramhog.o \
     obj/hashblock-hashblock.o \
     obj/hashblock-ramhog_mt.o \
-    obj/alert.o
+    obj/alert.o \
+    obj/signedhash.o
 
 ifdef USE_UPNP
 	DEFS += -DUSE_UPNP=$(USE_UPNP)

@@ -47,6 +47,7 @@ enum
 {
     MSG_TX = 1,
     MSG_BLOCK,
+    MSG_SIGNED_HASH,
 };
 
 class CRequestTracker
@@ -279,6 +280,9 @@ public:
 
     void PushInventory(const CInv& inv)
     {
+        if (nVersion < PROTOCOL_VERSION_SIGNEDHASH_START && inv.type == MSG_SIGNED_HASH)
+            return;
+        
         {
             LOCK(cs_inventory);
             if (!setInventoryKnown.count(inv))

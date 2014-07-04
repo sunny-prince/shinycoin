@@ -34,6 +34,7 @@ static const char* ppszTypeName[] =
     "ERROR",
     "tx",
     "block",
+    "sigpowhash"
 };
 
 CMessageHeader::CMessageHeader()

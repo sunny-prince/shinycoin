@@ -135,6 +135,9 @@ void SetNeedCheckBlock(bool fNew)
 bool CRamhogThreadPool::ramhog(const uint8_t *input, size_t input_size, uint8_t *output, size_t output_size,
                                bool fForMiner)
 {
+    if (numSimultaneous == 0 || numWorkers == 0)
+        return error("CRamhogThreadPool::ramhog(): No workers");
+        
     {
         LOCK(cs_needCheckBlock);
         if (fNeedCheckBlock && fForMiner)

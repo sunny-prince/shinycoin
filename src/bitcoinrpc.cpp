@@ -165,7 +165,15 @@ Object blockToJSON(const CBlock& block, const CBlockIndex* blockindex, bool fPri
     if (blockindex->pnext)
         result.push_back(Pair("nextblockhash", blockindex->pnext->GetBlockIDHash().GetHex()));
     result.push_back(Pair("flags", strprintf("%s%s", blockindex->IsProofOfStake()? "proof-of-stake" : "proof-of-work", blockindex->GeneratedStakeModifier()? " stake-modifier": "")));
-    result.push_back(Pair("proofhash", blockindex->IsProofOfStake()? blockindex->hashProofOfStake.GetHex() : blockindex->ComputeBlockPoWHash().GetHex()));
+    
+    uint256 powHash = 0;
+    if (blockindex->IsProofOfWork())
+    {
+        if (!blockindex->ComputeBlockPoWHash(powHash))
+            powHash = 0;
+    }
+    
+    result.push_back(Pair("proofhash", blockindex->IsProofOfStake()? blockindex->hashProofOfStake.GetHex() : powHash.GetHex()));
     result.push_back(Pair("entropybit", (int)blockindex->GetStakeEntropyBit()));
     result.push_back(Pair("modifier", strprintf("%016"PRI64x, blockindex->nStakeModifier)));
     result.push_back(Pair("modifierchecksum", strprintf("%08x", blockindex->nStakeModifierChecksum)));
@@ -363,7 +371,7 @@ Value getgenerate(const Array& params, bool fHelp)
             "getgenerate\n"
             "Returns true or false.");
 
-    return GetBoolArg("-gen", true);
+    return GetBoolArg("-gen", false);
 }
 
 
@@ -453,7 +461,7 @@ Value getmininginfo(const Array& params, bool fHelp)
     obj.push_back(Pair("currentblocktx",(uint64_t)nLastBlockTx));
     obj.push_back(Pair("difficulty",    (double)GetDifficulty()));
     obj.push_back(Pair("errors",        GetWarnings("statusbar")));
-    obj.push_back(Pair("generate",      GetBoolArg("-gen", true)));
+    obj.push_back(Pair("generate",      GetBoolArg("-gen", false)));
     obj.push_back(Pair("genproclimit",  (int)GetArg("-genproclimit", -1)));
     obj.push_back(Pair("hashespermin",  gethashespermin(params, false)));
     obj.push_back(Pair("pooledtx",      (uint64_t)mempool.size()));
@@ -2458,7 +2466,7 @@ Value estimatehpm(const Array& params, bool fHelp)
         bnTarget.SetCompact(lastPoW->nBits);
         CBigNum maxTarget(~uint256(0) << 0);
         
-        unsigned int secsTaken = lastPoW->nTime - prevPoW->nTime;
+        int secsTaken = lastPoW->nTime - prevPoW->nTime;
         if (secsTaken == 0)
             secsTaken = 1;
         
@@ -2501,7 +2509,7 @@ Value estimatecoindays(const Array& params, bool fHelp)
         bnTarget.SetCompact(lastPoS->nBits);
         CBigNum maxTarget(~uint256(0) << 0);
         
-        unsigned int secsTaken = lastPoS->nTime - prevPoS->nTime;
+        int secsTaken = lastPoS->nTime - prevPoS->nTime;
         if (secsTaken == 0)
             secsTaken = 1;
         
@@ -2515,6 +2523,63 @@ Value estimatecoindays(const Array& params, bool fHelp)
     }
     
     return Value::null;
+}
+
+Value getnetworkhashpm(const Array& params, bool fHelp)
+{
+    if (fHelp || params.size() > 2)
+        throw runtime_error(
+            "getnetworkhashpm [blockstoavg=24] [startblocksago=0]\n"
+            "Returns a recent hash/minute network mining estimate.");
+    
+    CBlockIndex *lastPoW = mapBlockIndex[hashBestChain];
+    while (lastPoW && !lastPoW->IsProofOfWork())
+        lastPoW = lastPoW->pprev;
+
+    CBigNum bnSumTargetTimesSeconds(0);
+    
+    int nBlocksToLook = (params.size() > 0 ? params[0].get_int() : 288);
+    int nStartAgo = (params.size() > 1 ? params[1].get_int() : 0);
+    
+    while (lastPoW && nStartAgo > 0)
+    {
+        lastPoW = lastPoW->pprev;
+        while (lastPoW && !lastPoW->IsProofOfWork())
+            lastPoW = lastPoW->pprev;
+        nStartAgo--;
+    }
+    
+    int nBlocksBack = nBlocksToLook;
+    int nTotalSecs = 0;
+    
+    while (lastPoW && lastPoW->nHeight > 1 && nBlocksBack > 0)
+    {
+        CBlockIndex *prevPoW = lastPoW->pprev;
+        while (prevPoW && !prevPoW->IsProofOfWork())
+            prevPoW = prevPoW->pprev;
+        
+        if (!prevPoW)
+            break;
+        
+        int secsTaken = lastPoW->nTime - prevPoW->nTime;
+        
+        CBigNum bnTarget;
+        bnTarget.SetCompact(prevPoW->nBits);
+        
+        bnSumTargetTimesSeconds += bnTarget * secsTaken;
+        nTotalSecs += secsTaken;
+        
+        lastPoW = prevPoW;
+        nBlocksBack--;
+    }
+    
+    int nTotalBlocks = nBlocksToLook - nBlocksBack;
+    CBigNum bnAverageTarget = bnSumTargetTimesSeconds / nTotalSecs;
+    CBigNum bnMaxTarget(~uint256(0) << 0);
+    
+    CBigNum bnNetworkHashPM = nTotalBlocks * bnMaxTarget * 60 / bnAverageTarget / nTotalSecs;
+    
+    return (boost::uint64_t)(bnNetworkHashPM.getuint64());
 }
 
 extern CCriticalSection cs_mapAlerts;
@@ -2625,6 +2690,7 @@ static const CRPCCommand vRPCCommands[] =
     //{ "getnetworkhashps",       &getnetworkhashps,       true},
     { "estimatehpm",            &estimatehpm,            true},
     { "estimatecoindays",       &estimatecoindays,       true},
+    { "getnetworkhashpm",       &getnetworkhashpm,       true},
     { "submitblock",            &submitblock,            false },
     
     //{ "createrawtransaction",   &createrawtransaction,   false},
@@ -3306,6 +3372,10 @@ Array RPCConvertValues(const std::string &strMethod, const std::vector<std::stri
     if (strMethod == "sendalert"              && n > 4) ConvertTo<boost::int64_t>(params[4]);
     if (strMethod == "sendalert"              && n > 5) ConvertTo<boost::int64_t>(params[5]);
     if (strMethod == "sendalert"              && n > 6) ConvertTo<boost::int64_t>(params[6]);
+    if (strMethod == "estimatehpm"            && n > 0) ConvertTo<boost::int64_t>(params[0]);
+    if (strMethod == "estimatecoindays"       && n > 0) ConvertTo<boost::int64_t>(params[0]);
+    if (strMethod == "getnetworkhashpm"       && n > 0) ConvertTo<boost::int64_t>(params[0]);
+    if (strMethod == "getnetworkhashpm"       && n > 1) ConvertTo<boost::int64_t>(params[1]);
     if (strMethod == "sendmany"               && n > 1)
     {
         string s = params[1].get_str();

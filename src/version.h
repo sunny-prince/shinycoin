@@ -30,7 +30,7 @@ extern const std::string CLIENT_DATE;
 
 // ShinyCoin version - intended for display purpose ONLY
 #define SHINYCOIN_VERSION_MAJOR       0
-#define SHINYCOIN_VERSION_MINOR       1
+#define SHINYCOIN_VERSION_MINOR       3
 #define SHINYCOIN_VERSION_REVISION    0
 #define SHINYCOIN_VERSION_BUILD       0
 
@@ -44,7 +44,8 @@ static const int SHINYCOIN_VERSION =
 // network protocol versioning
 //
 
-static const int PROTOCOL_VERSION = 60004;
+static const int PROTOCOL_VERSION = 60005;
+static const int PROTOCOL_VERSION_SIGNEDHASH_START = 60005;
 
 // earlier versions not supported as of Feb 2012, and are disconnected
 // NOTE: as of bitcoin v0.6 message serialization (vSend, vRecv) still

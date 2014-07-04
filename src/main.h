@@ -983,7 +983,7 @@ public:
         return (nBits == 0);
     }
 
-    uint256 GetPoWHash() const;
+    bool GetPoWHash(uint256 &powHash) const;
     bool MinerGetPoWHash(uint256 &outHash) const;
     
     uint256 GetIDHash() const
@@ -1311,7 +1311,7 @@ public:
         return *phashBlock;
     }
 
-    uint256 ComputeBlockPoWHash() const
+    bool ComputeBlockPoWHash(uint256 &powHash) const
     {
         CBlock block;
         block.nVersion        = nVersion;
@@ -1321,7 +1321,7 @@ public:
         block.nTime           = nTime;
         block.nBits           = nBits;
         block.nNonce          = nNonce;
-        return block.GetPoWHash();
+        return block.GetPoWHash(powHash);
     }
     
     int64 GetBlockTime() const

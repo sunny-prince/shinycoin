@@ -11,6 +11,7 @@
 #include "util.h"
 #include "main.h"
 #include "kernel.h"
+#include "signedhash.h"
 #include <boost/version.hpp>
 #include <boost/filesystem.hpp>
 #include <boost/filesystem/fstream.hpp>
@@ -520,6 +521,16 @@ bool CTxDB::WriteCheckpointPubKey(const string& strPubKey)
     return Write(string("strCheckpointPubKey"), strPubKey);
 }
 
+bool CTxDB::ReadSignedHashPubKey(string& strPubKey)
+{
+    return Read(string("strSignedHashPubKey"), strPubKey);
+}
+
+bool CTxDB::WriteSignedHashPubKey(const string& strPubKey)
+{
+    return Write(string("strSignedHashPubKey"), strPubKey);
+}
+
 bool CTxDB::ReadV04UpgradeTime(unsigned int& nUpgradeTime)
 {
     return Read(string("nProtocolV04UpgradeTime"), nUpgradeTime);
@@ -528,6 +539,38 @@ bool CTxDB::ReadV04UpgradeTime(unsigned int& nUpgradeTime)
 bool CTxDB::WriteV04UpgradeTime(const unsigned int& nUpgradeTime)
 {
     return Write(string("nProtocolV04UpgradeTime"), nUpgradeTime);
+}
+
+bool CTxDB::ReadPoWHash(uint256 idHash, uint256 &powHash)
+{
+    return Read(make_pair(string("powhash"), idHash), powHash);
+}
+
+bool CTxDB::WritePoWHash(uint256 idHash, const uint256 &powHash)
+{
+    return Write(make_pair(string("powhash"), idHash), powHash);
+}
+
+bool CTxDB::ReadSignedHash(uint256 idHash, uint256 &powHash, vector<unsigned char> &vchSig)
+{
+    std::pair<uint256, vector<unsigned char> > pair;
+    if (Read(make_pair(string("signedhash"), idHash), pair))
+    {
+        powHash = pair.first;
+        vchSig = pair.second;
+        return true;
+    }
+    return false;
+}
+
+bool CTxDB::WriteSignedHash(uint256 idHash, const uint256 &powHash, const vector<unsigned char> &vchSig)
+{
+    return Write(make_pair(string("signedhash"), idHash), make_pair(powHash, vchSig));
+}
+
+bool CTxDB::EraseSignedHash(uint256 idHash)
+{
+    return Erase(make_pair(string("signedhash"), idHash));
 }
 
 CBlockIndex static * InsertBlockIndex(uint256 hash)
@@ -799,7 +842,6 @@ bool CTxDB::LoadBlockIndex()
 
     return true;
 }
-
 
 
 

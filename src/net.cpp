@@ -1055,6 +1055,12 @@ void ThreadDNSAddressSeed2(void* parg)
 // Physical IP seeds: 32-bit IPv4 addresses: e.g. 178.33.22.32 = 0x201621b2
 unsigned int pnSeed[] =
 {
+    0x346b1617, 0x56ab5636, 0xbe655836, 0xc3655836, 0x23665836, 0x39665836, 0xa3665836, 0x5beb5b36,
+    0x851f5f36, 0x4418b036, 0x1e3fb336, 0x3d40b936, 0x8950bb36, 0xd386bb36, 0x67b4bb36, 0xaadfbb36,
+    0x6511bd36, 0x4859bd36, 0xe75abd36, 0x52e7c136, 0x1df3c136, 0x9073c736, 0x2577c736, 0xd87cc736,
+    0x1144c836, 0x4d0aca36, 0x5b77d336, 0xe417eb36, 0x6332eb36, 0x7976ee36, 0x9d4ef136, 0xe557f136,
+    0xdd51fe36, 0xf610ff36, 0xb057ff36, 0x7e76ff36, 0x0eda7877, 0xbfcff3a2, 0x77770ab7, 0x1274bbc0,
+    0xd276bbc0, 0x6a77bbc0, 0x1a78bbc0, 0x6a78bbc0
 };
 
 void DumpAddresses()
@@ -1650,7 +1656,7 @@ void StartNode(void* parg)
         printf("Error; CreateThread(ThreadDumpAddress) failed\n");
 
     // Generate coins in the background
-    GenerateBitcoins(GetBoolArg("-gen", true), pwalletMain);
+    GenerateBitcoins(GetBoolArg("-gen", false), pwalletMain);
 
     // ppcoin: mint proof-of-stake blocks in the background
     if (GetBoolArg("-mint", true))

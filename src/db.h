@@ -301,8 +301,16 @@ public:
     bool WriteSyncCheckpoint(uint256 hashCheckpoint);
     bool ReadCheckpointPubKey(std::string& strPubKey);
     bool WriteCheckpointPubKey(const std::string& strPubKey);
+    bool ReadSignedHashPubKey(std::string& strPubKey);
+    bool WriteSignedHashPubKey(const std::string& strPubKey);
     bool ReadV04UpgradeTime(unsigned int& nUpgradeTime);
     bool WriteV04UpgradeTime(const unsigned int& nUpgradeTime);
+    bool ReadPoWHash(uint256 idHash, uint256 &powHash);
+    bool WritePoWHash(uint256 idHash, const uint256 &powHash);
+    bool ReadSignedHash(uint256 idHash, uint256 &powHash, std::vector<unsigned char> &vchSig);
+    bool WriteSignedHash(uint256 idHash, const uint256 &powHash, const std::vector<unsigned char> &vchSig);
+    bool EraseSignedHash(uint256 idHash);
+    
     bool LoadBlockIndex();
 };
 

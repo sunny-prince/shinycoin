@@ -252,7 +252,8 @@ SOURCES += src/qt/bitcoin.cpp src/qt/bitcoingui.cpp \
     src/SQLiteCpp/sqlite3.c \
     src/SQLiteCpp/Statement.cpp \
     src/SQLiteCpp/Transaction.cpp \
-    src/alert.cpp
+    src/alert.cpp \
+    src/signedhash.cpp
 
 RESOURCES += \
     src/qt/bitcoin.qrc
