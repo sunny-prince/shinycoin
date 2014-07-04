@@ -2817,6 +2817,24 @@ bool static AlreadyHave(CTxDB& txdb, const CInv& inv)
     return true;
 }
 
+void static CatchUpSigHashes(CNode *pfrom)
+{
+    if (pfrom->nVersion >= PROTOCOL_VERSION_SIGNEDHASH_START && CSignedHash::strMasterPrivKey.empty())
+    {
+        for (CBlockIndex *pindex=pindexGenesisBlock->pnext; pindex; pindex = pindex->pnext)
+        {
+            uint256 idHash = pindex->GetBlockIDHash();
+            uint256 powHash;
+            std::vector<unsigned char> vchSig;
+            if (!SignedHash::GetSignedPoWHash(idHash, powHash, vchSig))
+            {
+                pfrom->PushMessage("getsigpowhas", idHash);
+                break;
+            }
+        }
+    }
+}
+
 
 static void ProcessSignedHashInvRequest(CNode *pfrom, const uint256 &idHash)
 {
@@ -2959,20 +2977,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
                 Checkpoints::checkpointMessage.RelayTo(pfrom);
         }
         
-        if (pfrom->nVersion >= PROTOCOL_VERSION_SIGNEDHASH_START && CSignedHash::strMasterPrivKey.empty())
-        {
-            for (CBlockIndex *pindex=pindexGenesisBlock->pnext; pindex; pindex = pindex->pnext)
-            {
-                uint256 idHash = pindex->GetBlockIDHash();
-                uint256 powHash;
-                std::vector<unsigned char> vchSig;
-                if (!SignedHash::GetSignedPoWHash(idHash, powHash, vchSig))
-                {
-                    pfrom->PushMessage("getsigpowhas", idHash);
-                    break;
-                }
-            }
-        }
+        CatchUpSigHashes(pfrom);
         
         pfrom->fSuccessfullyConnected = true;
 
@@ -3485,7 +3490,9 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         else
             printf("getsignedhashes invalid block hash\n");
         
-        for (; pindex; pindex = pindex->pnext)
+        int nLimit = 20;
+        
+        for (; pindex && nLimit > 0; pindex = pindex->pnext, nLimit--)
             ProcessSignedHashInvRequest(pfrom, pindex->GetBlockIDHash());
     }
     
@@ -3509,6 +3516,8 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
                 mapAlreadyAskedFor.erase(inv);
                 pfrom->AskFor(inv);
             }
+            
+            CatchUpSigHashes(pfrom);
         }
     }
 
