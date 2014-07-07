@@ -8,7 +8,7 @@
 #include "../main.h"
 #include "../script.h"
 #include "../wallet.h"
-
+/*
 using namespace std;
 
 // Test routines internal to script.cpp:
@@ -327,4 +327,4 @@ BOOST_AUTO_TEST_CASE(AreInputsStandard)
     BOOST_CHECK(!txToNonStd.AreInputsStandard(mapInputs));
 }
 
-BOOST_AUTO_TEST_SUITE_END()
+BOOST_AUTO_TEST_SUITE_END()*/
