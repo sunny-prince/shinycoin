@@ -1,2 +1,4 @@
-src/obj/build.h
+Makefile
+qrc_bitcoin.cpp
+shinycoin-qt
 
