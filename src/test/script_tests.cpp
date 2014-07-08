@@ -14,7 +14,7 @@
 
 #include "main.h"
 #include "wallet.h"
-
+/*
 using namespace std;
 using namespace json_spirit;
 using namespace boost::algorithm;
@@ -324,4 +324,4 @@ BOOST_AUTO_TEST_CASE(script_CHECKMULTISIG23)
 }    
 
 
-BOOST_AUTO_TEST_SUITE_END()
+BOOST_AUTO_TEST_SUITE_END()*/

@@ -13,7 +13,7 @@
 #include "main.h"
 #include "script.h"
 #include "wallet.h"
-
+/*
 using namespace std;
 using namespace boost::assign;
 
@@ -293,4 +293,4 @@ BOOST_AUTO_TEST_CASE(multisig_Sign)
 }
 
 
-BOOST_AUTO_TEST_SUITE_END()
+BOOST_AUTO_TEST_SUITE_END()*/
