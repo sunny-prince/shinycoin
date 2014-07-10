@@ -3357,6 +3357,9 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
             printf("received block %s\n", block.GetIDHash().ToString().substr(0,20).c_str());
             // block.print();
             
+            if (!SignedHash::GetPoWHash(idHash, powHash))
+                pfrom->PushMessage("getsigpowhas", idHash);
+            
             if (ProcessBlock(pfrom, &block))
                 mapAlreadyAskedFor.erase(inv);
             
@@ -3516,8 +3519,6 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
                 mapAlreadyAskedFor.erase(inv);
                 pfrom->AskFor(inv);
             }
-            
-            CatchUpSigHashes(pfrom);
         }
     }
 
